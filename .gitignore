@@ -3,3 +3,5 @@ wandb
 expert
 **/.gitold
 script
+data
+result

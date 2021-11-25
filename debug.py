@@ -27,4 +27,4 @@ for name, env_cls in mt10.train_classes.items():
     print(name)
 
 for (env, tasks) in training_envs:
-    run_env(env, tasks)
+    run_env(env, tasks, render=True)
