@@ -1,0 +1,12 @@
+program: expert_train.py
+method: grid
+metric:
+  goal: maximize
+  name: eval_return
+parameters:
+  n_task:
+    value: 10
+  env_index:
+    values: [0, 1, 2, 3, 4]
+  lr:
+    values: [0.001, 0.0001, 0.00001]

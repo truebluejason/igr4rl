@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import itertools
 import metaworld
 import numpy as np
