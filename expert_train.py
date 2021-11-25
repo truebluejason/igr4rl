@@ -37,7 +37,7 @@ def parse_arguments():
                         help='random seed (default: 0)')
     parser.add_argument('--batch_size', type=int, default=256, metavar='N',
                         help='batch size (default: 256)')
-    parser.add_argument('--num_steps', type=int, default=1000001, metavar='N',
+    parser.add_argument('--num_steps', type=int, default=2000001, metavar='N',
                         help='maximum number of steps (default: 1000000)')
     parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
                         help='hidden size (default: 256)')
@@ -164,7 +164,7 @@ def train_agent(env, tasks, env_name, args):
             agent.save_checkpoint(env_name, suffix='latest', train_configs=args)
 
 
-if __name__ == "__main__":
+def main():
     args = parse_arguments()
     wandb.init(project="igr4rl", entity="jasonyoo", config=args)
     wandb.define_metric("train_step")
@@ -177,3 +177,7 @@ if __name__ == "__main__":
     set_seed(args.seed, env)
     train_agent(env, tasks, env_name, args)
     env.close()
+
+
+if __name__ == "__main__":
+    main()

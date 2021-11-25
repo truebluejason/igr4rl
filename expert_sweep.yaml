@@ -6,6 +6,8 @@ metric:
 parameters:
   n_task:
     value: 10
+  cuda:
+    value: true
   env_index:
     values: [0, 1, 2, 3, 4]
   lr:
