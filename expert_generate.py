@@ -47,6 +47,8 @@ def collect_trajectories(agent, env_info, n_samples, render):
         trajectories.append(pd.concat((state_df, action_df), axis=1))
         avg_rewards.append(avg_reward)
         collected += len(state_df)
+        if collected % 1e5 == 0:
+            print(f"Collected {collected} samples...")
     avg_reward = sum(avg_rewards)/len(avg_rewards)
     return pd.concat(trajectories, axis=0)[:n_samples], avg_reward
 

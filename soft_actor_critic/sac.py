@@ -120,7 +120,7 @@ class SAC(object):
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         if ckpt_path is None:
-            ckpt_path = f"{save_dir}/model_{suffix}_{train_configs.lr}"
+            ckpt_path = f"{save_dir}/model_{suffix}_{train_configs.lr}_{train_configs.seed}"
         print('Saving models to {}'.format(ckpt_path))
         torch.save({'policy_state_dict': self.policy.state_dict(),
                     'critic_state_dict': self.critic.state_dict(),

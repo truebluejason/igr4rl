@@ -20,3 +20,12 @@ Environment Index to Names
 7. peg-insert-side-v2
 8. window-open-v2
 9. window-close-v2
+
+Todo
+1. Verify a single feedforward network can perform behavioural cloning on a single task
+2. Verify a single feedforward network can perform behavioural cloning on multiple tasks when trained simultaneously
+3. Verify a single feedforward network goes through catastrophic forgetting on multiple tasks when trained sequentially
+4. Verify a single feedforward network does not catastrophically forget when trained sequentially with perfect replay
+5. verify a single feedforward network does not catastrophically forget when trained sequentially with generative replay
+6. Verify a single feedforward network does not catastrophically forget when trained sequentially with internal generative replay with perfect pre-trained embeddings
+7. Verify a single feedforward network does not catastrophically forget when trained sequentially with internal generative replay with no pre-trained embeddings
