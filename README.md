@@ -29,3 +29,18 @@ Todo
 5. verify a single feedforward network does not catastrophically forget when trained sequentially with generative replay
 6. Verify a single feedforward network does not catastrophically forget when trained sequentially with internal generative replay with perfect pre-trained embeddings
 7. Verify a single feedforward network does not catastrophically forget when trained sequentially with internal generative replay with no pre-trained embeddings
+
+Chosen Experts
+0 reach 0.00001 seed 3 best!
+4 drawer-open 0.0001 seed 1 best!
+5 drawer-close 0.0001 seed 1 (maybe) best!
+6 button-press-topdown 0.0001 seed 1 (maybe)
+0 reach 0.0005 seed 12 best!
+4 drawer-open 0.0005 seed 14 best!
+5 drawer-close 0.0005 seed 10 (maybe) best!
+6 button-press-topdown 0.0005 seed 10 (maybe)
+
+Data Generation
+`python expert_generate.py --checkpoint expert/checkpoint_reach-v2/model_best_1e-05_3`
+`python expert_generate.py --checkpoint expert/checkpoint_drawer-open-v2/model_best_0.0001`
+`python expert_generate.py --checkpoint expert/checkpoint_drawer-close-v2/model_best_0.0001`

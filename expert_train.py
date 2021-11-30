@@ -2,9 +2,9 @@ import argparse
 import itertools
 import metaworld
 import numpy as np
-import os
 import torch
 import wandb
+from igr4rl.utils import evaluate_on_env
 
 from soft_actor_critic import SAC, ReplayMemory
 from utils import DotDict
@@ -68,29 +68,6 @@ def set_seed(seed, env):
     np.random.seed(seed)
 
 
-def evaluate_agent(env, tasks, agent, n_episodes, render):
-    avg_reward = 0.
-    state_action_info = {'state': [], 'action': []}
-    for _ in range(n_episodes):
-        env.set_task(tasks[np.random.randint(len(tasks))])
-        state, episode_reward, episode_steps, done = env.reset(), 0, 0, False
-        while not done:
-            if render:
-                env.render()
-            with torch.no_grad():
-                action = agent.select_action(state, evaluate=True)
-            state_action_info['state'].append(state.tolist())
-            state_action_info['action'].append(action.tolist())
-            next_state, reward, done, _ = env.step(action)
-            episode_reward += reward
-            state = next_state
-            episode_steps += 1
-            done = done or episode_steps == env.max_path_length
-        avg_reward += episode_reward
-    avg_reward /= n_episodes
-    return avg_reward, state_action_info
-
-
 def train_agent(env, tasks, env_name, args):
     # Agent
     agent = SAC(env.observation_space.shape[0], env.action_space, args)
@@ -148,11 +125,11 @@ def train_agent(env, tasks, env_name, args):
         print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(
             i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 
-        eval_every = 25
+        eval_every = 10
         if i_episode % eval_every == 0:
             n_episode = 10
-            avg_reward, _ = evaluate_agent(
-                env, tasks, agent, n_episodes=n_episode, render=args.render)
+            avg_reward, _ = evaluate_on_env(agent, env, tasks, n_episodes=n_episode,
+                                            random=True, collect_data=False, render=args.render)
             wandb.log({'eval_return': avg_reward, 'eval_step': i_episode // eval_every})
             print("----------------------------------------")
             print("Test Episodes: {}, Avg. Reward: {}".format(n_episode, round(avg_reward, 2)))

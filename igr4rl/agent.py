@@ -4,6 +4,7 @@ import torch
 import wandb
 
 from .nn import DeterministicPolicy
+from .utils import evaluate_on_env
 
 
 class BehaviorCloningAgent:
@@ -11,8 +12,10 @@ class BehaviorCloningAgent:
         self.ff = DeterministicPolicy(input_dim, action_space.shape[0], num_layers,
                                       hidden_dim, action_space)
 
-    def __call__(self, state):
-        return self.ff(state)
+    def select_action(self, state, evaluate=False):
+        # takes and returns numpy arrays but operates with tensors
+        state = torch.tensor(state).type(torch.float)
+        return self.ff(state.to(next(self.ff.parameters()).device)).cpu().numpy()
 
     def get_parameters(self):
         return {'ff': self.ff.parameters()}
@@ -20,6 +23,7 @@ class BehaviorCloningAgent:
     def compute_losses(self, X, y_target):
         y_pred = self.ff(X)
         ff_loss = ((y_pred - y_target) ** 2).sum()
+        # Add VAE loss here. Maybe even add generative replay data here.
         return {'ff': ff_loss}
 
     def save_checkpoint(self, env_name, suffix="", ckpt_path=None,  train_configs=None):
@@ -62,80 +66,78 @@ class Trainer:
         self.args = args
 
     def train(self):
-        num_steps = 1
-        env_index = 0
+        num_steps = 0
+        dataloader_index = 0
         best_avg_reward = -float('inf')
-        losses = {}
+        losses_dict = {}  # Format: {<env name>: {<module name>: <list of losses>}}
         dataloaders = [iter(dataloader) for dataloader in self.dataloaders]
+
         while num_steps < self.num_steps:
+
             # switch dataloader every self.switch_env_every steps
-            if num_steps % self.switch_env_every == 0:
-                env_index = (env_index + 1) % len(dataloaders)
-            dataloader = dataloaders[env_index]
+            if (num_steps + 1) % self.switch_env_every == 0:
+                dataloader_index = (dataloader_index + 1) % len(dataloaders)
+            dataloader = dataloaders[dataloader_index]
             batch = next(dataloader, None)
             if batch is None:
-                dataloaders[env_index] = iter(self.dataloaders[env_index])
-                batch = next(dataloaders[env_index])
+                dataloaders[dataloader_index] = iter(self.dataloaders[dataloader_index])
+                batch = next(dataloaders[dataloader_index])
 
-            # step optimizers
+            # step optimizers and update losses_dict
             X, y = batch[0].to(self.device).type(torch.float), batch[1].to(self.device)
             for optimizer in self.optimizers.values():
                 optimizer.zero_grad()
             batch_losses = self.agent.compute_losses(X, y)
-            for name, loss in batch_losses.items():
+            curr_env_name = list(self.env_info.values())[dataloader_index][0]
+            for module_name, loss in batch_losses.items():
                 loss.backward()
-                losses[name] = losses.get(name, []) + [loss.item()]
+                env_losses_dict = losses_dict.get(curr_env_name, {})
+                env_losses_dict[module_name] = [*env_losses_dict.get(module_name, []), loss.item()]
+                losses_dict[curr_env_name] = env_losses_dict
             for optimizer in self.optimizers.values():
                 optimizer.step()
 
             # save and evaluate models once in a while
-            if num_steps % 100 == 0:
-                print(f"step {num_steps} loss: {losses[name][-1]}")
             eval_every = 1000
             if num_steps % eval_every == 0:
-                log_dict = {}
-                # log overall and per expert training loss
-                task_avg_losses = []
-                for name, task_losses in losses.items():
-                    task_avg_losses.append(sum(task_losses)/len(task_losses))
-                    log_dict[f'{name}_loss'] = task_avg_losses[-1]
-                log_dict['train_loss'] = sum(task_avg_losses)/len(task_avg_losses)
-                losses = {}
-
-                # log overall and per environment performance
-                task_avg_rewards = []
-                for env_index, info in self.env_info.items():
-                    avg_reward = self.evaluate(env_index, n_episodes=10)
-                    log_dict[f'{info[0]}_return'] = avg_reward
-                    task_avg_rewards.append(avg_reward)
-                log_dict['eval_return'] = sum(task_avg_rewards)/len(task_avg_rewards)
-                wandb.log(log_dict)
-                print(f"REWARD: {log_dict['eval_return']}")
+                # log overall and per environment training loss and performance
+                fmt_losses_dict = self.get_fmt_losses_dict(losses_dict)
+                fmt_return_dict = self.evaluate()
+                wandb.log({**fmt_losses_dict, **fmt_return_dict})
+                losses_dict = {}
+                print(f"Losses: {fmt_losses_dict}")
+                print(f"Return: {fmt_return_dict}")
 
                 # save checkpoints
                 self.agent.save_checkpoint(self.run_name, suffix='latest', train_configs=self.args)
-                if avg_reward > best_avg_reward:
-                    best_avg_reward = avg_reward
+                if fmt_return_dict['eval_return'] > best_avg_reward:
+                    best_avg_reward = fmt_return_dict['eval_return']
                     self.agent.save_checkpoint(
                         self.run_name, suffix='best', train_configs=self.args)
 
             num_steps += 1
 
-    def evaluate(self, env_index, n_episodes=10):
-        _, env, tasks = self.env_info[env_index]
-        avg_reward = 0.
-        for _ in range(n_episodes):
-            env.set_task(tasks[np.random.randint(len(tasks))])
-            state, episode_reward, episode_steps, done = env.reset(), 0, 0, False
-            while not done:
-                if self.args.render:
-                    env.render()
-                with torch.no_grad():
-                    action = self.agent(torch.tensor(state).to(self.device).type(torch.float))
-                state, reward, done, _ = env.step(action.cpu().numpy())
-                episode_reward += reward
-                episode_steps += 1
-                done = done or episode_steps == env.max_path_length
-            avg_reward += episode_reward
-        avg_reward /= n_episodes
-        return avg_reward
+    def get_fmt_losses_dict(self, losses_dict):
+        # log per environment training loss for each module
+        result_dict, module_avg_losses = {}, {}
+        for (env_name, _, _) in self.env_info.values():
+            env_loss_info = losses_dict.get(env_name, None)
+            if env_loss_info is None:
+                continue
+            for module_name, module_losses in env_loss_info.items():
+                module_loss = sum(module_losses)/len(module_losses)
+                result_dict[f'{env_name}_{module_name}_loss'] = module_loss
+                module_avg_losses[f'{module_name}_loss'] = \
+                    module_avg_losses.get(f'{module_name}_loss', []) + [module_loss]
+        return {**result_dict, **{k: sum(v)/len(v) for k, v in module_avg_losses.items()}}
+
+    def evaluate(self):
+        # log per environment performance
+        return_dict, env_avg_rewards = {}, []
+        for (env_name, env, tasks) in self.env_info.values():
+            avg_reward, _ = evaluate_on_env(self.agent, env, tasks, n_episodes=50,
+                                            random=False, collect_data=False, render=self.args.render)
+            return_dict[f'{env_name}_return'] = avg_reward
+            env_avg_rewards.append(avg_reward)
+        return_dict['eval_return'] = sum(env_avg_rewards)/len(env_avg_rewards)
+        return return_dict

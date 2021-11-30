@@ -1,16 +1,13 @@
 import argparse
-import metaworld
-import numpy as np
 import pandas as pd
-import os
 import torch
 import wandb
 
 from expert_train import get_mt10_env, set_seed
-from agent import BehaviorCloningAgent, Trainer
+from igr4rl import BehaviorCloningAgent, Trainer
 from utils import DotDict
 
-os.environ["WANDB_MODE"] = "offline"
+# os.environ["WANDB_MODE"] = "offline"
 
 
 def parse_args():
@@ -46,6 +43,16 @@ def parse_args():
     return parser.parse_args()
 
 
+def get_env_info(env_indexes, n_task, seed):
+    # create environments and tasks
+    env_info = {}
+    for env_index in env_indexes:
+        env_name, env, task = get_mt10_env(env_index, n_task)
+        set_seed(seed, env)
+        env_info[env_index] = (env_name, env, task)
+    return env_info
+
+
 def load_datasets(paths, batch_size, env_indexes, n_task, seed=0, max_samples=None):
     # load datasets
     dataloaders = []
@@ -60,33 +67,8 @@ def load_datasets(paths, batch_size, env_indexes, n_task, seed=0, max_samples=No
         dataset = torch.utils.data.TensorDataset(X, y)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
         dataloaders.append(dataloader)
-
-    # create environments and tasks
-    env_info = {}
-    for env_index in env_indexes:
-        env_name, env, task = get_mt10_env(env_index, n_task)
-        set_seed(seed, env)
-        env_info[env_index] = (env_name, env, task)
+    env_info = get_env_info(env_indexes, n_task, seed)
     return dataloaders, env_info
-
-
-def evaluate_agent(env, tasks, agent, n_episodes, render):
-    avg_reward = 0.
-    for _ in range(n_episodes):
-        env.set_task(tasks[np.random.randint(len(tasks))])
-        state, episode_reward, episode_steps, done = env.reset(), 0, 0, False
-        while not done:
-            if render:
-                env.render()
-            with torch.no_grad():
-                action = agent.forward(state, evaluate=True)
-            state, reward, done, _ = env.step(action)
-            episode_reward += reward
-            episode_steps += 1
-            done = done or episode_steps == env.max_path_length
-        avg_reward += episode_reward
-    avg_reward /= n_episodes
-    return avg_reward
 
 
 def train_agent(dataloaders, env_info, args):
@@ -103,12 +85,11 @@ def main():
     wandb.define_metric("eval_step")
     wandb.define_metric("eval_return", step_metric="eval_step")
     args = DotDict(wandb.config)
-    # env_name, env, tasks = get_mt10_env(args.env_index, args.n_task)
     print(f"Training agent with settings: {args}")
     dataloaders, env_info = load_datasets(args.datasets, args.batch_size, args.env_indexes,
                                           args.n_task, seed=args.seed, max_samples=args.max_samples)
     train_agent(dataloaders, env_info, args)
-    for info in env_info:
+    for info in env_info.values():
         env = info[1]
         env.close()
 
